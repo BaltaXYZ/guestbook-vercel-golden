@@ -1,14 +1,6 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/app.js", "use": "@vercel/node" }
-  ],
-  "routes": [
-    { "src": "^/(health|notes)$", "dest": "api/app.js" },
-    { "src": "^/notes/(.*)$", "dest": "api/app.js" },
-    { "src": "^/$", "dest": "api/app.js" },
-    { "src": "^(.*)$", "dest": "/public/$1" }
-  ]
+  "version": 2
 }
+
 
 
