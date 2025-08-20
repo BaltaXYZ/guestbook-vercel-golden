@@ -2,26 +2,24 @@ import express from 'express';
 import pkg from 'pg';
 import serverless from 'serverless-http';
 
-// Destructure Pool from pg
 const { Pool } = pkg;
 
-// Initialize Express app
-const app = express();
-app.use(express.json());
+// Lazy-init pool
+let pool;
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    });
+  }
+  return pool;
+}
 
-// Serve static files from the public folder
-app.use(express.static('public'));
-
-// Configure database pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-// Ensure notes table and name column exist and backfill defaults
-async function ensure() {
-  // Create notes table if it doesn't exist
-  await pool.query(`
+// Ensure table exists
+async function ensureTables() {
+  const db = getPool();
+  await db.query(`
     CREATE TABLE IF NOT EXISTS notes (
       id SERIAL PRIMARY KEY,
       content TEXT NOT NULL,
@@ -29,28 +27,43 @@ async function ensure() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
-  // Add the name column if it doesn't exist (for safety)
-  await pool.query(`ALTER TABLE notes ADD COLUMN IF NOT EXISTS name TEXT;`);
-  // Backfill any existing rows where name is null or empty
-  await pool.query(`UPDATE notes SET name='Anonym' WHERE name IS NULL OR name = '';`);
-  // Set default for name column
-  await pool.query(`ALTER TABLE notes ALTER COLUMN name SET DEFAULT 'Anonym';`);
+  await db.query(
+    `ALTER TABLE notes ALTER COLUMN name SET DEFAULT 'Anonym';`
+  );
+  await db.query(
+    `UPDATE notes SET name='Anonym' WHERE name IS NULL OR name = '';`
+  );
 }
 
-// Call ensure() without awaiting to avoid top-level await
-ensure().catch((err) => {
-  console.error('Error ensuring notes table:', err);
+const app = express();
+app.use(express.json());
+app.use(express.static('public'));
+
+// Middleware: kör ensureTables() första gången
+let initialized = false;
+app.use(async (req, res, next) => {
+  if (!initialized) {
+    try {
+      await ensureTables();
+      initialized = true;
+    } catch (err) {
+      console.error('Error ensuring tables:', err);
+      return res.status(500).json({ error: 'Database init failed' });
+    }
+  }
+  next();
 });
 
-// Health check endpoint
+// Health check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Get the latest 50 notes
+// Get notes
 app.get('/notes', async (_req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = getPool();
+    const { rows } = await db.query(
       `SELECT id, name, content, created_at
        FROM notes
        ORDER BY created_at DESC
@@ -63,9 +76,10 @@ app.get('/notes', async (_req, res) => {
   }
 });
 
-// Create a new note
+// Create note
 app.post('/notes', async (req, res) => {
   try {
+    const db = getPool();
     let { content, name } = req.body || {};
     content = (content || '').toString().trim();
     name = (name || '').toString().trim();
@@ -75,7 +89,7 @@ app.post('/notes', async (req, res) => {
     if (!name) {
       name = 'Anonym';
     }
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO notes (content, name) VALUES ($1, $2)
        RETURNING id, name, content, created_at`,
       [content, name]
@@ -87,14 +101,16 @@ app.post('/notes', async (req, res) => {
   }
 });
 
-// Update an existing note
+// Update note
 app.patch('/notes/:id', async (req, res) => {
   try {
+    const db = getPool();
     const id = req.params.id;
     const { content, name } = req.body || {};
     const setClauses = [];
     const values = [];
     let index = 1;
+
     if (name !== undefined) {
       const sanitized = name.toString().trim();
       setClauses.push(`name = $${index++}`);
@@ -107,9 +123,8 @@ app.patch('/notes/:id', async (req, res) => {
     if (setClauses.length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
-    // Append id at the end
     values.push(id);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE notes SET ${setClauses.join(', ')} WHERE id = $${index}
        RETURNING id, name, content, created_at`,
       values
@@ -124,14 +139,12 @@ app.patch('/notes/:id', async (req, res) => {
   }
 });
 
-// Delete a note
+// Delete note
 app.delete('/notes/:id', async (req, res) => {
   try {
+    const db = getPool();
     const id = req.params.id;
-    const result = await pool.query(
-      `DELETE FROM notes WHERE id = $1`,
-      [id]
-    );
+    const result = await db.query(`DELETE FROM notes WHERE id = $1`, [id]);
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Not found' });
     }
@@ -142,5 +155,4 @@ app.delete('/notes/:id', async (req, res) => {
   }
 });
 
-// Export the serverless handler
 export default serverless(app);
