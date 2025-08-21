@@ -2,84 +2,76 @@
 <html lang="sv">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gästbok</title>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 1rem; }
-    input, button { padding: 0.5rem; margin: 0.3rem; }
-    ul { list-style-type: none; padding-left: 0; }
-    li { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
-    .actions button { margin-left: 0.5rem; }
+    body {
+      font-family: sans-serif;
+      margin: 2rem;
+    }
+    h1 {
+      margin-bottom: 1rem;
+    }
+    #notes {
+      margin-top: 2rem;
+    }
+    .note {
+      border-bottom: 1px solid #ccc;
+      padding: 0.5rem 0;
+    }
+    .note small {
+      color: #666;
+    }
   </style>
 </head>
 <body>
   <h1>Gästbok</h1>
   <div>
-    <input id="nameInput" placeholder="Ditt namn (valfritt)">
-    <input id="contentInput" placeholder="Skriv ett meddelande">
-    <button id="saveBtn">Spara</button>
+    <input id="name" placeholder="Ditt namn (valfritt)">
+    <input id="content" placeholder="Skriv ett meddelande">
+    <button onclick="saveNote()">Spara</button>
   </div>
-  <ul id="notesList"></ul>
+
+  <div id="notes"></div>
 
   <script>
     async function loadNotes() {
-      const res = await fetch('/notes');
-      const notes = await res.json();
-      const list = document.getElementById('notesList');
-      list.innerHTML = '';
-      notes.forEach(note => {
-        const li = document.createElement('li');
-        li.textContent = `${note.name}: ${note.content} (${new Date(note.created_at).toLocaleString()})`;
-        const actions = document.createElement('span');
-        actions.className = 'actions';
-        // Edit button
-        const editBtn = document.createElement('button');
-        editBtn.textContent = 'Redigera';
-        editBtn.onclick = async () => {
-          const newName = prompt('Nytt namn:', note.name);
-          const newContent = prompt('Nytt meddelande:', note.content);
-          const body = {};
-          if (newName !== null) body.name = newName;
-          if (newContent !== null) body.content = newContent;
-          await fetch('/notes/' + note.id, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          });
-          await loadNotes();
-        };
-        // Delete button
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Ta bort';
-        deleteBtn.onclick = async () => {
-          if (confirm('Ta bort?')) {
-            await fetch('/notes/' + note.id, { method: 'DELETE' });
-            await loadNotes();
-          }
-        };
-        actions.appendChild(editBtn);
-        actions.appendChild(deleteBtn);
-        li.appendChild(actions);
-        list.appendChild(li);
-      });
+      try {
+        const res = await fetch('/api/notes');   // ändrat
+        const data = await res.json();
+
+        const notesDiv = document.getElementById('notes');
+        notesDiv.innerHTML = '';
+        data.forEach(note => {
+          const div = document.createElement('div');
+          div.className = 'note';
+          div.innerHTML = `<strong>${note.name}</strong>: ${note.content} <br><small>${new Date(note.created_at).toLocaleString()}</small>`;
+          notesDiv.appendChild(div);
+        });
+      } catch (err) {
+        console.error('Kunde inte ladda notes:', err);
+      }
     }
 
-    document.getElementById('saveBtn').onclick = async () => {
-      const name = document.getElementById('nameInput').value.trim();
-      const content = document.getElementById('contentInput').value.trim();
-      if (!content) {
-        alert('Du måste skriva ett meddelande');
-        return;
-      }
-      await fetch('/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, content: content })
-      });
-      document.getElementById('contentInput').value = '';
-      await loadNotes();
-    };
+    async function saveNote() {
+      const name = document.getElementById('name').value;
+      const content = document.getElementById('content').value;
+      if (!content.trim()) return;
 
-    // Initial load
+      try {
+        await fetch('/api/notes', {              // ändrat
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, content })
+        });
+        document.getElementById('content').value = '';
+        await loadNotes();
+      } catch (err) {
+        console.error('Kunde inte spara note:', err);
+      }
+    }
+
+    // ladda notes direkt vid start
     loadNotes();
   </script>
 </body>
