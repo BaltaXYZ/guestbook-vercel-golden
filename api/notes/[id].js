@@ -1,17 +1,20 @@
+// api/notes/[id].js
 import pkg from 'pg';
 const { Pool } = pkg;
 
+// Lazy pool (återanvänds mellan kallstarter)
 let pool;
 function getPool() {
   if (!pool) {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: { rejectUnauthorized: false }, // för t.ex. Neon på Vercel
     });
   }
   return pool;
 }
 
+// Körs vid första anropet i denna funktion (inte på top-level)
 let initialized = false;
 async function ensure() {
   const db = getPool();
@@ -23,6 +26,7 @@ async function ensure() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
+  // säkerställ default + rimligt namn även för gamla rader
   await db.query(`ALTER TABLE notes ALTER COLUMN name SET DEFAULT 'Anonym';`);
   await db.query(`UPDATE notes SET name='Anonym' WHERE name IS NULL OR name = ''`);
 }
@@ -39,7 +43,7 @@ export default async function handler(req, res) {
 
     const db = getPool();
 
-    // GET /api/notes/:id
+    // GET /api/notes/:id — hämta en post
     if (req.method === 'GET') {
       const r = await db.query(
         'SELECT id, name, content, created_at FROM notes WHERE id = $1',
@@ -49,7 +53,7 @@ export default async function handler(req, res) {
       return res.status(200).json(r.rows[0]);
     }
 
-    // PATCH /api/notes/:id
+    // PATCH /api/notes/:id — uppdatera valfria fält
     if (req.method === 'PATCH') {
       const { name, content } = req.body || {};
       if (name === undefined && content === undefined) {
@@ -73,15 +77,14 @@ export default async function handler(req, res) {
       }
 
       values.push(idNum);
-      const sql =
-        `UPDATE notes SET ${sets.join(', ')} WHERE id = $${i} ` +
-        `RETURNING id, name, content, created_at`;
+      const sql = `UPDATE notes SET ${sets.join(', ')} WHERE id = $${i}
+                   RETURNING id, name, content, created_at`;
       const r = await db.query(sql, values);
       if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
       return res.status(200).json(r.rows[0]);
     }
 
-    // DELETE /api/notes/:id
+    // DELETE /api/notes/:id — oförändrat
     if (req.method === 'DELETE') {
       const r = await db.query('DELETE FROM notes WHERE id = $1', [idNum]);
       if (r.rowCount === 0) return res.status(404).json({ error: 'Not found' });
