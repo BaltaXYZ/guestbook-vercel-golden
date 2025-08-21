@@ -27,12 +27,8 @@ async function ensureTables() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
-  await db.query(
-    `ALTER TABLE notes ALTER COLUMN name SET DEFAULT 'Anonym';`
-  );
-  await db.query(
-    `UPDATE notes SET name='Anonym' WHERE name IS NULL OR name = '';`
-  );
+  await db.query(`ALTER TABLE notes ALTER COLUMN name SET DEFAULT 'Anonym';`);
+  await db.query(`UPDATE notes SET name='Anonym' WHERE name IS NULL OR name = '';`);
 }
 
 const app = express();
@@ -54,13 +50,13 @@ app.use(async (req, res, next) => {
   next();
 });
 
-// Health check
+// Health check (nås på /api/health via Vercel)
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Get notes
-app.get('/api/notes', async (_req, res) => {
+// Get notes  (frontend: GET /api/notes)
+app.get('/notes', async (_req, res) => {
   try {
     const db = getPool();
     const { rows } = await db.query(
@@ -76,8 +72,8 @@ app.get('/api/notes', async (_req, res) => {
   }
 });
 
-// Create note
-app.post('/api/notes', async (req, res) => {
+// Create note  (frontend: POST /api/notes)
+app.post('/notes', async (req, res) => {
   try {
     const db = getPool();
     let { content, name } = req.body || {};
@@ -86,9 +82,8 @@ app.post('/api/notes', async (req, res) => {
     if (!content) {
       return res.status(400).json({ error: 'Content required' });
     }
-    if (!name) {
-      name = 'Anonym';
-    }
+    if (!name) name = 'Anonym';
+
     const { rows } = await db.query(
       `INSERT INTO notes (content, name) VALUES ($1, $2)
        RETURNING id, name, content, created_at`,
@@ -101,8 +96,8 @@ app.post('/api/notes', async (req, res) => {
   }
 });
 
-// Update note
-app.patch('/api/notes/:id', async (req, res) => {
+// Update note  (frontend: PATCH /api/notes/:id)
+app.patch('/notes/:id', async (req, res) => {
   try {
     const db = getPool();
     const id = req.params.id;
@@ -123,15 +118,14 @@ app.patch('/api/notes/:id', async (req, res) => {
     if (setClauses.length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
+
     values.push(id);
     const { rows } = await db.query(
       `UPDATE notes SET ${setClauses.join(', ')} WHERE id = $${index}
        RETURNING id, name, content, created_at`,
       values
     );
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'Not found' });
-    }
+    if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
   } catch (err) {
     console.error('Error updating note:', err);
@@ -139,15 +133,14 @@ app.patch('/api/notes/:id', async (req, res) => {
   }
 });
 
-// Delete note (nu korrekt med /api/notes/:id)
-app.delete('/api/notes/:id', async (req, res) => {
+// Delete note  (frontend: DELETE /api/notes/:id)
+app.delete('/notes/:id', async (req, res) => {
   try {
     const db = getPool();
     const idNum = Number(req.params.id);
     if (!Number.isInteger(idNum)) {
       return res.status(400).json({ error: 'Invalid id' });
     }
-
     const result = await db.query(`DELETE FROM notes WHERE id = $1`, [idNum]);
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Not found' });
