@@ -18,9 +18,29 @@
     .note {
       border-bottom: 1px solid #ccc;
       padding: 0.5rem 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
     }
     .note small {
       color: #666;
+    }
+    .note-content {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .note-actions {
+      flex: 0 0 auto;
+    }
+    .delete-btn {
+      background: transparent;
+      border: 1px solid #ccc;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+    }
+    .delete-btn:hover {
+      background: #f8f8f8;
     }
   </style>
 </head>
@@ -45,7 +65,20 @@
         data.forEach(note => {
           const div = document.createElement('div');
           div.className = 'note';
-          div.innerHTML = `<strong>${note.name}</strong>: ${note.content} <br><small>${new Date(note.created_at).toLocaleString()}</small>`;
+          div.setAttribute('data-note-id', note.id);
+
+          const content = document.createElement('div');
+          content.className = 'note-content';
+          content.innerHTML = `<strong>${note.name}</strong>: ${note.content} <br><small>${new Date(note.created_at).toLocaleString()}</small>`;
+
+          const actions = document.createElement('div');
+          actions.className = 'note-actions';
+          actions.innerHTML = `
+            <button class="delete-btn" aria-label="Ta bort notis" onclick="deleteNote(${note.id})">🗑️ Ta bort</button>
+          `;
+
+          div.appendChild(content);
+          div.appendChild(actions);
           notesDiv.appendChild(div);
         });
       } catch (err) {
@@ -68,6 +101,32 @@
         await loadNotes();
       } catch (err) {
         console.error('Kunde inte spara note:', err);
+      }
+    }
+
+    // Ny: delete-funktionalitet
+    async function deleteNote(id) {
+      const ok = confirm('Ta bort den här notisen?');
+      if (!ok) return;
+
+      try {
+        const resp = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+        if (resp.status === 204) {
+          // ta bort elementet direkt utan omladdning
+          const row = document.querySelector(`[data-note-id="${id}"]`);
+          if (row) row.remove();
+          return;
+        }
+        // visa ev. fel
+        let msg = `Kunde inte ta bort (status ${resp.status})`;
+        try {
+          const data = await resp.json();
+          if (data?.error) msg = `Kunde inte ta bort: ${data.error}`;
+        } catch {}
+        alert(msg);
+      } catch (err) {
+        console.error('Kunde inte ta bort note:', err);
+        alert('Nätverksfel – kunde inte ta bort.');
       }
     }
 
