@@ -1,137 +1,193 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gästbok</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 2rem;
-    }
-    h1 {
-      margin-bottom: 1rem;
-    }
-    #notes {
-      margin-top: 2rem;
-    }
-    .note {
-      border-bottom: 1px solid #ccc;
-      padding: 0.5rem 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 1rem;
-    }
-    .note small {
-      color: #666;
-    }
-    .note-content {
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-    .note-actions {
-      flex: 0 0 auto;
-    }
-    .delete-btn {
-      background: transparent;
-      border: 1px solid #ccc;
-      padding: 0.25rem 0.5rem;
-      cursor: pointer;
-    }
-    .delete-btn:hover {
-      background: #f8f8f8;
-    }
-  </style>
-</head>
-<body>
-  <h1>Gästbok</h1>
-  <div>
-    <input id="name" placeholder="Ditt namn (valfritt)">
-    <input id="content" placeholder="Skriv ett meddelande">
-    <button onclick="saveNote()">Spara</button>
-  </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gästbok</title>
+    <style>
+      :root { --gap: 10px; --radius: 10px; }
+      * { box-sizing: border-box; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
+      h1 { margin-bottom: 16px; }
+      form, .note, .edit-form { border: 1px solid #ddd; border-radius: var(--radius); padding: 12px; margin-bottom: 12px; }
+      input, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+      textarea { min-height: 90px; }
+      .actions { display: flex; gap: var(--gap); flex-wrap: wrap; margin-top: 10px; }
+      button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 8px; background: #f5f5f5; cursor: pointer; }
+      button.btn-primary { background: #2563eb; color: white; border-color: #1e40af; }
+      button.btn-danger  { background: #ef4444; color: white; border-color: #b91c1c; }
+      .note-header { display: flex; justify-content: space-between; gap: var(--gap); flex-wrap: wrap; }
+      .note-content { white-space: pre-wrap; margin-top: 8px; }
+      .muted { color: #6b7280; font-size: .9rem; }
+      #notes:empty::before { content: "Inga poster ännu."; color: #6b7280; }
+    </style>
+  </head>
+  <body>
+    <h1>Gästbok</h1>
 
-  <div id="notes"></div>
+    <!-- Skapa ny note -->
+    <form id="create-form">
+      <label for="name">Namn (valfritt)</label>
+      <input id="name" name="name" placeholder="Anonym om tomt" />
 
-  <script>
-    async function loadNotes() {
-      try {
-        const res = await fetch('/api/notes');   // ändrat
-        const data = await res.json();
+      <label for="content" style="margin-top:8px;">Meddelande</label>
+      <textarea id="content" name="content" placeholder="Skriv något trevligt..." required></textarea>
 
-        const notesDiv = document.getElementById('notes');
-        notesDiv.innerHTML = '';
-        data.forEach(note => {
-          const div = document.createElement('div');
-          div.className = 'note';
-          div.setAttribute('data-note-id', note.id);
+      <div class="actions">
+        <button type="submit" class="btn-primary">Spara</button>
+      </div>
+    </form>
 
-          const content = document.createElement('div');
-          content.className = 'note-content';
-          content.innerHTML = `<strong>${note.name}</strong>: ${note.content} <br><small>${new Date(note.created_at).toLocaleString()}</small>`;
+    <!-- Lista -->
+    <div id="notes"></div>
 
-          const actions = document.createElement('div');
-          actions.className = 'note-actions';
-          actions.innerHTML = `
-            <button class="delete-btn" aria-label="Ta bort notis" onclick="deleteNote(${note.id})">🗑️ Ta bort</button>
-          `;
-
-          div.appendChild(content);
-          div.appendChild(actions);
-          notesDiv.appendChild(div);
-        });
-      } catch (err) {
-        console.error('Kunde inte ladda notes:', err);
-      }
-    }
-
-    async function saveNote() {
-      const name = document.getElementById('name').value;
-      const content = document.getElementById('content').value;
-      if (!content.trim()) return;
-
-      try {
-        await fetch('/api/notes', {              // ändrat
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, content })
-        });
-        document.getElementById('content').value = '';
-        await loadNotes();
-      } catch (err) {
-        console.error('Kunde inte spara note:', err);
-      }
-    }
-
-    // Ny: delete-funktionalitet
-    async function deleteNote(id) {
-      const ok = confirm('Ta bort den här notisen?');
-      if (!ok) return;
-
-      try {
-        const resp = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
-        if (resp.status === 204) {
-          // ta bort elementet direkt utan omladdning
-          const row = document.querySelector(`[data-note-id="${id}"]`);
-          if (row) row.remove();
-          return;
+    <script>
+      // === Hjälpare ===
+      async function http(url, options = {}) {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+          let err = {};
+          try { err = await res.json(); } catch {}
+          const msg = err.error || ('Request failed: ' + res.status);
+          throw new Error(msg);
         }
-        // visa ev. fel
-        let msg = `Kunde inte ta bort (status ${resp.status})`;
-        try {
-          const data = await resp.json();
-          if (data?.error) msg = `Kunde inte ta bort: ${data.error}`;
-        } catch {}
-        alert(msg);
-      } catch (err) {
-        console.error('Kunde inte ta bort note:', err);
-        alert('Nätverksfel – kunde inte ta bort.');
+        const ct = res.headers.get('content-type') || '';
+        return ct.includes('application/json') ? res.json() : res.text();
       }
-    }
+      const fmtDate = iso => { try { return new Date(iso).toLocaleString('sv-SE'); } catch { return iso || ''; } };
 
-    // ladda notes direkt vid start
-    loadNotes();
-  </script>
-</body>
+      // === Lista ===
+      async function loadNotes() {
+        const container = document.getElementById('notes');
+        container.innerHTML = 'Laddar...';
+        try {
+          const data = await http('/api/notes'); // repo har redan GET /api/notes
+          const notes = Array.isArray(data) ? data : (data.notes || []);
+          container.innerHTML = '';
+          notes
+            .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+            .forEach(n => container.appendChild(renderNote(n)));
+        } catch (e) {
+          container.innerHTML = `<div class="muted">Kunde inte hämta poster: ${e.message}</div>`;
+        }
+      }
+
+      // === Rendera en note + knappar ===
+      function renderNote(note) {
+        const el = document.createElement('div');
+        el.className = 'note';
+        el.id = `note-${note.id}`;
+
+        const header = document.createElement('div');
+        header.className = 'note-header';
+        const who = document.createElement('div');
+        who.innerHTML = `<strong>${(note.name || 'Anonym')}</strong>`;
+        const when = document.createElement('div');
+        when.className = 'muted';
+        when.textContent = fmtDate(note.created_at);
+        header.append(who, when);
+
+        const content = document.createElement('div');
+        content.className = 'note-content';
+        content.textContent = note.content;
+
+        const actions = document.createElement('div');
+        actions.className = 'actions note-actions';
+        const editBtn = document.createElement('button');
+        editBtn.textContent = 'Redigera';
+        editBtn.onclick = () => startEdit(note);
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Ta bort';
+        delBtn.className = 'btn-danger';
+        delBtn.onclick = () => deleteNote(note.id);
+        actions.append(editBtn, delBtn);
+
+        el.append(header, content, actions);
+        return el;
+      }
+
+      // === Skapa ===
+      async function saveNote(evt) {
+        evt.preventDefault();
+        const name = document.getElementById('name').value || undefined;
+        const content = document.getElementById('content').value;
+        if (!content || !content.trim()) { alert('Meddelandet får inte vara tomt.'); return; }
+        try {
+          await http('/api/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, content })
+          });
+          document.getElementById('create-form').reset();
+          await loadNotes();
+        } catch (e) { alert(e.message); }
+      }
+
+      // === Ta bort ===
+      async function deleteNote(id) {
+        if (!confirm('Ta bort den här posten?')) return;
+        try {
+          await http(`/api/notes/${id}`, { method: 'DELETE' });
+          await loadNotes();
+        } catch (e) { alert(e.message); }
+      }
+
+      // === Redigera (inline-form) ===
+      function startEdit(note) {
+        const el = document.getElementById(`note-${note.id}`);
+        if (!el) return;
+
+        const view = el.querySelector('.note-content');
+        const actions = el.querySelector('.note-actions');
+        view.style.display = 'none';
+        actions.style.display = 'none';
+
+        const form = document.createElement('div');
+        form.className = 'edit-form';
+
+        const nameInput = document.createElement('input');
+        nameInput.value = note.name ?? '';
+        nameInput.placeholder = 'Namn';
+
+        const contentInput = document.createElement('textarea');
+        contentInput.value = note.content;
+        contentInput.placeholder = 'Innehåll';
+
+        const row = document.createElement('div');
+        row.className = 'actions';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Spara';
+        saveBtn.className = 'btn-primary';
+        saveBtn.onclick = () => saveEdit(note.id, nameInput.value, contentInput.value);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Avbryt';
+        cancelBtn.onclick = () => loadNotes();
+
+        row.append(saveBtn, cancelBtn);
+        form.append(nameInput, contentInput, row);
+        el.appendChild(form);
+      }
+
+      async function saveEdit(id, name, content) {
+        if (!content || !content.trim()) { alert('Innehållet får inte vara tomt!'); return; }
+        const body = {};
+        if (name !== undefined) body.name = name;
+        if (content !== undefined) body.content = content;
+        try {
+          await http(`/api/notes/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          await loadNotes();
+        } catch (e) { alert(e.message); }
+      }
+
+      // Init
+      document.getElementById('create-form').addEventListener('submit', saveNote);
+      loadNotes();
+    </script>
+  </body>
 </html>
