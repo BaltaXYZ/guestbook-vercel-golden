@@ -60,7 +60,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Get notes
-app.get('/notes', async (_req, res) => {
+app.get('/api/notes', async (_req, res) => {
   try {
     const db = getPool();
     const { rows } = await db.query(
@@ -77,7 +77,7 @@ app.get('/notes', async (_req, res) => {
 });
 
 // Create note
-app.post('/notes', async (req, res) => {
+app.post('/api/notes', async (req, res) => {
   try {
     const db = getPool();
     let { content, name } = req.body || {};
@@ -102,7 +102,7 @@ app.post('/notes', async (req, res) => {
 });
 
 // Update note
-app.patch('/notes/:id', async (req, res) => {
+app.patch('/api/notes/:id', async (req, res) => {
   try {
     const db = getPool();
     const id = req.params.id;
@@ -139,8 +139,8 @@ app.patch('/notes/:id', async (req, res) => {
   }
 });
 
-// Delete note — stöd både /notes/:id och /api/notes/:id
-const deleteHandlers = async (req, res) => {
+// Delete note (nu korrekt med /api/notes/:id)
+app.delete('/api/notes/:id', async (req, res) => {
   try {
     const db = getPool();
     const idNum = Number(req.params.id);
@@ -157,9 +157,6 @@ const deleteHandlers = async (req, res) => {
     console.error('Error deleting note:', err);
     res.status(500).json({ error: 'Server error' });
   }
-};
-
-app.delete('/notes/:id', deleteHandlers);
-app.delete('/api/notes/:id', deleteHandlers); // extra kompatibilitet
+});
 
 export default serverless(app);
